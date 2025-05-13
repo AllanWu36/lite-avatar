@@ -49,10 +49,10 @@ class Audio2Mouth(object):
         rHeadInfo += struct.pack('i', sampleNum)
         return rHeadInfo
     
-    def inference(self, subtitles=None, input_audio=None):
+    def inference(self, subtitles=None, input_audio=None, sample_rate=16000):
         f1 = time.time()
 
-        frame_cnt = int(len(input_audio) / 16000 * 30)
+        frame_cnt = int(len(input_audio) / sample_rate * 30)
         au_data = extract_para_feature(input_audio, frame_cnt)
         ph_data = np.zeros((au_data.shape[0], 2))
         
@@ -68,27 +68,35 @@ class Audio2Mouth(object):
         end_time = start_time + interval
         is_end = False
         while True:
-            
-            start = int(start_time * 16000)
-            end = start + 16000
+            # 计算当前时间段的起始和结束帧
+            start = int(start_time * sample_rate)
+            end = start + sample_rate
+            # 检查是否已到达音频的结尾
             if end_time >= audio_length:
                 is_end = True
-                end = int(audio_length * 16000)
-                start = end - 16000
+                # 如果已到达结尾，则调整起始和结束帧以确保处理最后一段音频
+                end = int(audio_length * sample_rate)
+                start = end - sample_rate
                 start_time = audio_length - interval
                 end_time = audio_length
+            # 计算当前时间段的起始和结束帧在30fps下的对应帧数
             start_frame = int(start_time * int(30))
             end_frame = start_frame + int(30 * interval)
 
+            # 提取当前时间段的音频和唇部运动特征
             input_au = au_data[start_frame:end_frame]
             input_ph = ph_data[start_frame:end_frame]
+            # 将特征转换为模型所需的格式
             input_au = input_au[np.newaxis,:].astype(np.float32)
             input_ph = input_ph[np.newaxis,:].astype(np.float32)
             
+            # 使用模型进行推理，得到输出和特征
             output, feat = self.audio2mouth_model.run(['output', 'feat'],{'input_au':input_au,'input_ph':input_ph,'input_sp':self.sp,'w':self.w})
             
+            # 根据当前时间段的位置处理输出
             if start_time == 0.0:
                 if is_end is False:
+                    # 如果当前时间段在音频的开头且不是最后一段，则处理输出
                     for tt in range(int(30 * interval) - frag):
                         param_frame = {}
                         for ii, key in enumerate(self.p_list):
@@ -96,6 +104,7 @@ class Audio2Mouth(object):
                             param_frame[key] = round(value, 3)
                         param_res.append(param_frame)
                 else:
+                    # 如果当前时间段在音频的开头且是最后一段，则处理输出
                     for tt in range(int(30 * interval)):
                         param_frame = {}
                         for ii, key in enumerate(self.p_list):
@@ -103,6 +112,7 @@ class Audio2Mouth(object):
                             param_frame[key] = round(value, 3)
                         param_res.append(param_frame)
             elif is_end is False:
+                # 如果当前时间段不是音频的开头或结尾，则处理输出
                 for tt in range(frag,int(30 * interval) - frag):
                     frame_id = start_frame + tt
                     if frame_id < len(param_res):
@@ -118,6 +128,7 @@ class Audio2Mouth(object):
                             param_frame[key] = round(value, 3)
                         param_res.append(param_frame)
             else:
+                # 如果当前时间段在音频的结尾，则处理输出
                 for tt in range(frag,int(30 * interval)):
                     frame_id = start_frame + tt
                     if frame_id < len(param_res):
@@ -133,8 +144,10 @@ class Audio2Mouth(object):
                             param_frame[key] = round(value, 3)
                         param_res.append(param_frame)
             
+            # 更新当前时间段的起始和结束时间
             start_time = end_time - (frag / 10)
             end_time = start_time + interval
+            # 检查是否已到达音频的结尾
             if is_end is True:
                 break
 

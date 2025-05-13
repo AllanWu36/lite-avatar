@@ -41,6 +41,7 @@ class liteAvatar(object):
                  num_threads=1,
                  use_bg_as_idle=False,
                  fps=30,
+                 sample_rate=16000,
                  generate_offline=False,
                  use_gpu=False):
         
@@ -52,6 +53,7 @@ class liteAvatar(object):
         self.use_gpu = use_gpu
         self.device = "cuda" if use_gpu else "cpu"
         
+        self.sample_rate = sample_rate
         s = time.time()
         from audio2mouth_cpu import Audio2Mouth
         
@@ -259,29 +261,56 @@ class liteAvatar(object):
         return param_res
     
     def audio2param(self, input_audio_byte, prefix_padding_size=0, is_complete=False, audio_status=-1):
-        headinfo = geneHeadInfo(16000, 16, len(input_audio_byte))
+        """
+        将输入的音频字节流转换为参数列表，用于后续的口型同步处理。
+
+        参数:
+        - input_audio_byte: 输入的音频字节流。
+        - prefix_padding_size: 前缀填充的大小，默认为0。
+        - is_complete: 是否需要完整的参数列表，默认为False。s
+        - audio_status: 音频状态，默认为-1。
+
+        返回:
+        - param_res: 转换后的参数列表。
+        """
+        # 生成音频头信息并添加到输入音频字节流中
+        headinfo = geneHeadInfo(self.sample_rate, 16, len(input_audio_byte))
         input_audio_byte = headinfo + input_audio_byte
+        # 从字节流中读取音频数据
         input_audio, sr = sf.read(BytesIO(input_audio_byte))
         
-        param_res, _, _ = self.audio2mouth.inference(subtitles=None, input_audio=input_audio)
+        # 使用音频到嘴型模型进行推理，得到参数列表
+        param_res, _, _ = self.audio2mouth.inference(subtitles=None, input_audio=input_audio, sample_rate=self.sample_rate)
         
+        # 初始化沉默比例列表
         sil_scale = np.zeros(len(param_res))
+        # 从音频字节流中创建音频分段
         sound = AudioSegment.from_raw(BytesIO(input_audio_byte), sample_width=2, frame_rate=16000, channels=1)
+        # 检测音频中的沉默部分
         start_end_list = detect_silence(sound, 500, -50)
         if len(start_end_list) > 0:
             for start, end in start_end_list:
+                # 将沉默部分的开始和结束时间转换为帧数
                 start_frame = int(start / 1000 * 30)
                 end_frame = int(end / 1000 * 30)
                 logger.info(f'silence part: {start_frame}-{end_frame} frames')
+                # 标记沉默部分的帧
                 sil_scale[start_frame:end_frame] = 1
+        # 对沉默比例列表进行边缘填充
         sil_scale = np.pad(sil_scale, 2, mode='edge')
+        # 定义一个核数组用于卷积操作
         kernel = np.array([0.1,0.2,0.4,0.2,0.1])
+        # 对沉默比例列表进行卷积操作以平滑沉默部分的边界
         sil_scale = np.convolve(sil_scale, kernel, 'same')
+        # 移除卷积操作后多余的边界
         sil_scale = sil_scale[2:-2]
+        # 根据沉默比例列表调整参数列表中的值以模拟沉默
         self.make_silence(param_res, sil_scale)
+        # 如果当前帧率不是30，则对参数列表进行插值以适应当前帧率
         if self.fps != 30:
             param_res = self.interp_param(param_res, fps=self.fps)
         
+        # 如果需要完整的参数列表，则进行后缀填充
         if is_complete:
             param_res = self.padding_last(param_res)
             
@@ -332,14 +361,15 @@ class liteAvatar(object):
         
         cmd = '/usr/bin/ffmpeg -r 30 -i {}/%05d.jpg -i {} -framerate 30 -c:v libx264 -pix_fmt yuv420p -b:v 5000k -strict experimental -loglevel error {}/test_demo.mp4 -y'.format(tmp_frame_dir, audio_file_path, result_dir)
         os.system(cmd)
-    
-    @staticmethod
-    def read_wav_to_bytes(file_path):
+
+
+    def read_wav_to_bytes(self,file_path):
         try:
             # 打开WAV文件
             with wave.open(file_path, 'rb') as wav_file:
                 # 获取WAV文件的参数
                 params = wav_file.getparams()
+                self.sample_rate = params.framerate
                 print(f"Channels: {params.nchannels}, Sample Width: {params.sampwidth}, Frame Rate: {params.framerate}, Number of Frames: {params.nframes}")
                 
                 # 读取所有帧
