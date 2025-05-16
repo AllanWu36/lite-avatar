@@ -376,6 +376,8 @@ class liteAvatar(object):
                 frames = wav_file.readframes(params.nframes)
                 return frames
         except wave.Error as e:
+            import traceback
+            print(traceback.format_exc())
             print(f"Error reading WAV file: {e}")
             return None
         
