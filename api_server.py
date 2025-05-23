@@ -20,7 +20,11 @@ def run_avatar_task(task_id, data_dir, audio_file_path, result_dir):
         
         # 添加音频文件处理逻辑
         processed_audio_path = audio_file_path
-        
+
+        #提取音频文件名
+        audio_file_name = os.path.basename(audio_file_path)
+        audio_file_name = audio_file_name.split(".")[0]
+        result_file_name = audio_file_name + ".mp4"
         # 检查WAV文件格式
         try:
             import wave
@@ -32,7 +36,6 @@ def run_avatar_task(task_id, data_dir, audio_file_path, result_dir):
             try:
                 # 创建一个临时文件路径用于保存转换后的音频
                 import tempfile
-                import os
                 temp_audio_path = os.path.join(tempfile.gettempdir(), f"converted_{os.path.basename(audio_file_path)}")
                 
                 # 使用scipy读取并转换音频
@@ -57,7 +60,6 @@ def run_avatar_task(task_id, data_dir, audio_file_path, result_dir):
                 try:
                     import subprocess
                     import tempfile
-                    import os
                     
                     temp_audio_path = os.path.join(tempfile.gettempdir(), f"converted_{os.path.basename(audio_file_path)}")
                     
@@ -77,10 +79,10 @@ def run_avatar_task(task_id, data_dir, audio_file_path, result_dir):
                     raise Exception(f"Unable to convert audio format: {e}")
         
         # 使用处理后的音频文件
-        avatar.handle(processed_audio_path, result_dir)
+        avatar.handle(processed_audio_path, result_dir, result_file_name=result_file_name)
         
         # 结果路径
-        result_video = os.path.join(result_dir, "test_demo.mp4")
+        result_video = os.path.join(result_dir, result_file_name)
         if os.path.exists(result_video):
             task_store[task_id]["status"] = "completed"
             task_store[task_id]["result"] = result_video

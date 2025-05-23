@@ -325,7 +325,7 @@ class liteAvatar(object):
                 param_res[ii][key] = param_res[ii][key] * (1 - sil_scale[ii]) + neu_value * sil_scale[ii]
         return param_res
     
-    def handle(self, audio_file_path, result_dir, param_res=None):
+    def handle(self, audio_file_path, result_dir, result_file_name="test_demo.mp4",param_res=None):
         
         audio_data = self.read_wav_to_bytes(audio_file_path)
         
@@ -359,7 +359,7 @@ class liteAvatar(object):
         for p in self.threads_prep:
             p.join()
         
-        cmd = '/usr/bin/ffmpeg -r 30 -i {}/%05d.jpg -i {} -framerate 30 -c:v libx264 -pix_fmt yuv420p -b:v 5000k -strict experimental -loglevel error {}/test_demo.mp4 -y'.format(tmp_frame_dir, audio_file_path, result_dir)
+        cmd = '/usr/bin/ffmpeg -r 30 -i {}/%05d.jpg -i {} -framerate 30 -c:v libx264 -pix_fmt yuv420p -b:v 5000k -strict experimental -loglevel error {}/{} -y'.format(tmp_frame_dir, audio_file_path, result_dir, result_file_name)
         os.system(cmd)
 
 
